@@ -763,13 +763,13 @@ function renderDashboard() {
     </div>
   `;
 
-  // KPIs
+  // KPIs — daysLeft is now calculated dynamically by GAS from actual shutdown date
   const kpiHtml = kpis.map(k => {
-    const weeksRemain = k.weekDue - (-weeksOut); // weekDue is negative (e.g. -7)
+    const days = Number(k.daysLeft);
     let cls = 'future', label = 'W' + k.weekDue;
-    if (Number(k.actualPct) >= 100) { cls = 'ok'; label = 'Done'; }
-    else if (k.daysLeft < 0) { cls = 'overdue'; label = 'Overdue'; }
-    else if (k.daysLeft < 14) { cls = 'soon'; label = 'Due soon'; }
+    if (Number(k.actualPct) >= 100) { cls = 'ok';     label = 'Done'; }
+    else if (days < 0)              { cls = 'overdue'; label = 'Overdue'; }
+    else if (days < 14)             { cls = 'soon';    label = 'Due soon'; }
     return `<div class="kpi-card">
       <div class="kpi-dot ${cls}"></div>
       <div class="kpi-info">
