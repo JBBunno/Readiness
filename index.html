@@ -98,6 +98,31 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sa
 .kpi-badge.future{background:var(--surface);color:var(--text-muted)}
 .kpi-week{font-size:10px;color:var(--text-muted)}
 
+/* ── Expandable KPI cards ── */
+.kpi-card{cursor:pointer;transition:box-shadow .15s}
+.kpi-card:active{background:var(--surface)}
+.kpi-card-header{display:flex;align-items:center;gap:10px;width:100%}
+.kpi-expand-body{display:none;border-top:1px solid var(--border);margin-top:8px;padding-top:10px}
+.kpi-card.expanded .kpi-expand-body{display:block}
+.kpi-progress-wrap{height:5px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:10px}
+.kpi-progress-fill{height:5px;border-radius:3px;transition:width .4s}
+.kpi-days-line{font-size:12px;color:var(--text-secondary);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between}
+.kpi-pct-label{font-size:13px;font-weight:700}
+.kpi-linked-tasks{display:flex;flex-direction:column;gap:4px}
+.kpi-linked-task{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:0.5px solid var(--border)}
+.kpi-linked-task:last-child{border-bottom:none}
+.klt-check{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.klt-check.done{background:var(--green);border-color:var(--green)}
+.klt-check.behind{background:var(--red);border-color:var(--red)}
+.klt-check svg{width:9px;height:9px;stroke:white;fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.klt-info{flex:1;min-width:0}
+.klt-desc{font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.klt-role{font-size:10px;color:var(--text-muted)}
+.klt-who{font-size:10px;color:var(--teal-dark)}
+.kpi-no-tasks{font-size:12px;color:var(--text-muted);padding:4px 0;font-style:italic}
+.kpi-chevron{font-size:10px;color:var(--text-muted);margin-left:auto;transition:transform .2s;flex-shrink:0}
+.kpi-card.expanded .kpi-chevron{transform:rotate(180deg)}
+
 /* ── Checklist ── */
 .role-filter-wrap{padding:10px 14px;display:flex;gap:6px;overflow-x:auto;border-bottom:1px solid var(--border);background:var(--white);position:sticky;top:0;z-index:5}
 .role-filter-wrap::-webkit-scrollbar{display:none}
@@ -523,25 +548,56 @@ const DEMO_TASKS = [
   {taskId:'PS008',role:'Planning Superintendent',description:'Conduct post-shutdown review',weekDue:1,duration:1,kpiLink:''},
 ];
 
-const DEMO_KPIS = [
-  {kpiId:'KPI01',category:'Planning',name:'Scope Freeze',weekDue:-7,actualPct:0,daysLeft:-77},
-  {kpiId:'KPI02',category:'Planning',name:'Parts Ordered',weekDue:-5,actualPct:33,daysLeft:-63},
-  {kpiId:'KPI03',category:'Planning',name:'Parts Verified',weekDue:-3,actualPct:0,daysLeft:-49},
-  {kpiId:'KPI04',category:'Planning',name:'Major POs',weekDue:-1,actualPct:0,daysLeft:-35},
-  {kpiId:'KPI05',category:'Planning',name:'RFQs',weekDue:-2,actualPct:0,daysLeft:-42},
-  {kpiId:'KPI06',category:'Planning',name:'Mob Finalised',weekDue:-1,actualPct:0,daysLeft:-35},
-  {kpiId:'KPI07',category:'Scheduling',name:'Schedule Freeze',weekDue:-5,actualPct:0,daysLeft:-63},
-  {kpiId:'KPI08',category:'Scheduling',name:'Critical Path Confirmed',weekDue:-4,actualPct:0,daysLeft:-56},
-  {kpiId:'KPI09',category:'Scheduling',name:'S/down Walkthrough',weekDue:-3,actualPct:0,daysLeft:-49},
-  {kpiId:'KPI10',category:'Scheduling',name:'Schedule Sign Off',weekDue:-2,actualPct:0,daysLeft:-42},
-  {kpiId:'KPI11',category:'Scheduling',name:'Hire Equip',weekDue:-2,actualPct:0,daysLeft:-42},
-  {kpiId:'KPI12',category:'Scheduling',name:'Isolations',weekDue:-2,actualPct:0,daysLeft:-42},
-  {kpiId:'KPI13',category:'Execution',name:'CRAW',weekDue:-2,actualPct:0,daysLeft:-42},
-  {kpiId:'KPI14',category:'Execution',name:'SEP',weekDue:-2,actualPct:0,daysLeft:-42},
-  {kpiId:'KPI15',category:'Execution',name:'Con L/ship Meeting',weekDue:-2,actualPct:0,daysLeft:-42},
-  {kpiId:'KPI16',category:'Execution',name:'OSE',weekDue:-1,actualPct:0,daysLeft:-21},
-  {kpiId:'KPI17',category:'Execution',name:'Post Shut Report',weekDue:1,actualPct:0,daysLeft:7},
-];
+// Demo KPIs: daysLeft dynamically calculated (assume W-11, 77 days to shutdown)
+const DEMO_KPIS = (() => {
+  const SD = 77; // days to shutdown in demo
+  const dl = wk => SD + (wk * 7);
+  return [
+    {kpiId:'KPI01',category:'Planning',   name:'Scope Freeze',           weekDue:-7, actualPct:0, daysLeft:dl(-7), linkedTasks:[
+      {taskId:'SC003',description:'Send out scope freeze site notice',role:'Shut Coordinator',weekDue:-7,status:'none'},
+      {taskId:'PS002',description:'Approve scope freeze',role:'Planning Superintendent',weekDue:-7,status:'none'}]},
+    {kpiId:'KPI02',category:'Planning',   name:'Parts Ordered',          weekDue:-5, actualPct:0, daysLeft:dl(-5), linkedTasks:[
+      {taskId:'SP002',description:'Ensure parts ordered and verified in system',role:'Shut Planner',weekDue:-5,status:'none'},
+      {taskId:'ML001',description:'Confirm all parts on order',role:'Material Logistics',weekDue:-5,status:'none'}]},
+    {kpiId:'KPI03',category:'Planning',   name:'Parts Verified',         weekDue:-3, actualPct:0, daysLeft:dl(-3), linkedTasks:[
+      {taskId:'SP003',description:'Parts verified and confirmed available',role:'Shut Planner',weekDue:-3,status:'none'},
+      {taskId:'ML002',description:'Verify parts received and staged',role:'Material Logistics',weekDue:-3,status:'none'}]},
+    {kpiId:'KPI04',category:'Planning',   name:'Major POs',              weekDue:-1, actualPct:0, daysLeft:dl(-1), linkedTasks:[
+      {taskId:'SP004',description:'Raise major purchase orders',role:'Shut Planner',weekDue:-1,status:'none'}]},
+    {kpiId:'KPI05',category:'Planning',   name:'RFQs',                   weekDue:-2, actualPct:0, daysLeft:dl(-2), linkedTasks:[
+      {taskId:'SP005',description:'Issue RFQs to contractors',role:'Shut Planner',weekDue:-2,status:'none'}]},
+    {kpiId:'KPI06',category:'Planning',   name:'Mob Finalised',          weekDue:-1, actualPct:0, daysLeft:dl(-1), linkedTasks:[
+      {taskId:'SP006',description:'Finalise mobilisation documentation',role:'Shut Planner',weekDue:-1,status:'none'}]},
+    {kpiId:'KPI07',category:'Scheduling', name:'Schedule Freeze',        weekDue:-5, actualPct:0, daysLeft:dl(-5), linkedTasks:[
+      {taskId:'SS002',description:'Confirm and freeze schedule',role:'Shut Scheduler',weekDue:-5,status:'none'}]},
+    {kpiId:'KPI08',category:'Scheduling', name:'Critical Path Confirmed',weekDue:-4, actualPct:0, daysLeft:dl(-4), linkedTasks:[
+      {taskId:'SS003',description:'Confirm critical path',role:'Shut Scheduler',weekDue:-4,status:'none'}]},
+    {kpiId:'KPI09',category:'Scheduling', name:'S/down Walkthrough',     weekDue:-3, actualPct:0, daysLeft:dl(-3), linkedTasks:[
+      {taskId:'SS004',description:'Conduct stakeholder Gantt walkthrough',role:'Shut Scheduler',weekDue:-3,status:'none'},
+      {taskId:'SC008',description:'Walkthrough with scheduler',role:'Shut Coordinator',weekDue:-3,status:'none'},
+      {taskId:'MS003',description:'Attend Gantt walkthrough',role:'Maint Sup',weekDue:-3,status:'none'},
+      {taskId:'PS005',description:'Attend stakeholder walkthrough',role:'Planning Superintendent',weekDue:-3,status:'none'}]},
+    {kpiId:'KPI10',category:'Scheduling', name:'Schedule Sign Off',      weekDue:-2, actualPct:0, daysLeft:dl(-2), linkedTasks:[
+      {taskId:'SS005',description:'Schedule sign-off by all stakeholders',role:'Shut Scheduler',weekDue:-2,status:'none'},
+      {taskId:'PS006',description:'Sign off final schedule',role:'Planning Superintendent',weekDue:-2,status:'none'}]},
+    {kpiId:'KPI11',category:'Scheduling', name:'Hire Equip',             weekDue:-2, actualPct:0, daysLeft:dl(-2), linkedTasks:[
+      {taskId:'SS006',description:'Identify and book hire equipment',role:'Shut Scheduler',weekDue:-2,status:'none'},
+      {taskId:'SC007',description:'Assist scheduler to identify and order hire equipment',role:'Shut Coordinator',weekDue:-2,status:'none'}]},
+    {kpiId:'KPI12',category:'Scheduling', name:'Isolations',             weekDue:-2, actualPct:0, daysLeft:dl(-2), linkedTasks:[
+      {taskId:'SS007',description:'Confirm isolations with permit hut',role:'Shut Scheduler',weekDue:-2,status:'none'},
+      {taskId:'PH002',description:'Isolation review with coordinator',role:'Permit Hut',weekDue:-2,status:'none'},
+      {taskId:'PH003',description:'Isolation schedule finalised',role:'Permit Hut',weekDue:-2,status:'none'}]},
+    {kpiId:'KPI13',category:'Execution',  name:'CRAW',                   weekDue:-2, actualPct:0, daysLeft:dl(-2), linkedTasks:[
+      {taskId:'HS003',description:'Attend pre-shutdown contractor leadership meeting',role:'HSES',weekDue:-1,status:'none'}]},
+    {kpiId:'KPI14',category:'Execution',  name:'SEP',                    weekDue:-2, actualPct:0, daysLeft:dl(-2), linkedTasks:[]},
+    {kpiId:'KPI15',category:'Execution',  name:'Con L/ship Meeting',     weekDue:-2, actualPct:0, daysLeft:dl(-2), linkedTasks:[
+      {taskId:'SC030',description:'Conduct contractor leadership meeting',role:'Shut Coordinator',weekDue:-1,status:'none'}]},
+    {kpiId:'KPI16',category:'Execution',  name:'OSE',                    weekDue:-1, actualPct:0, daysLeft:dl(-1), linkedTasks:[]},
+    {kpiId:'KPI17',category:'Execution',  name:'Post Shut Report',       weekDue:1,  actualPct:0, daysLeft:dl(1),  linkedTasks:[
+      {taskId:'SP008',description:'Review and close out completed work orders',role:'Shut Planner',weekDue:1,status:'none'},
+      {taskId:'SP009',description:'Post-shutdown report ready',role:'Shut Planner',weekDue:1,status:'none'}]},
+  ];
+})();
 
 const DEMO_ACTIONS = [
   {actionId:'ACT001',status:'Open',priority:'High',area:'TLO Chute',weekDue:-6,description:'Organise workshop for TLO chute component changeout and produce detailed scope',assignedTo:'Martin & Jon A',daysLeft:-70},
@@ -763,26 +819,70 @@ function renderDashboard() {
     </div>
   `;
 
-  // KPIs — daysLeft is now calculated dynamically by GAS from actual shutdown date
-  const kpiHtml = kpis.map(k => {
+  // KPIs — daysLeft and actualPct now calculated dynamically by GAS
+  const kpiHtml = kpis.map((k, idx) => {
     const days = Number(k.daysLeft);
+    const pct  = Number(k.actualPct) || 0;
     let cls = 'future', label = 'W' + k.weekDue;
-    if (Number(k.actualPct) >= 100) { cls = 'ok';     label = 'Done'; }
-    else if (days < 0)              { cls = 'overdue'; label = 'Overdue'; }
-    else if (days < 14)             { cls = 'soon';    label = 'Due soon'; }
-    return `<div class="kpi-card">
-      <div class="kpi-dot ${cls}"></div>
-      <div class="kpi-info">
-        <div class="kpi-name">${k.name}</div>
-        <div class="kpi-cat">${k.category}</div>
+    if (pct >= 100)   { cls = 'ok';      label = 'Done'; }
+    else if (days < 0)  { cls = 'overdue'; label = 'Overdue'; }
+    else if (days < 14) { cls = 'soon';    label = 'Due soon'; }
+
+    const barColor = cls === 'ok' ? 'var(--green)' : cls === 'overdue' ? 'var(--red)' : cls === 'soon' ? 'var(--amber)' : 'var(--teal)';
+    const daysText = days < 0
+      ? `${Math.abs(days)} days overdue`
+      : days === 0 ? 'Due today'
+      : `${days} days remaining`;
+
+    const linkedTasks = Array.isArray(k.linkedTasks) ? k.linkedTasks : [];
+    const linkedHtml = linkedTasks.length === 0
+      ? '<div class="kpi-no-tasks">No tasks directly linked to this milestone</div>'
+      : linkedTasks.map(t => {
+          const isDone   = t.status === 'done';
+          const isBehind = t.status === 'behind';
+          let chk = '<div class="klt-check"></div>';
+          if (isDone)   chk = '<div class="klt-check done"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>';
+          if (isBehind) chk = '<div class="klt-check behind"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>';
+          return `<div class="kpi-linked-task">
+            ${chk}
+            <div class="klt-info">
+              <div class="klt-desc">${t.description}</div>
+              <div class="klt-role">${t.role}${t.userName ? ' · <span class="klt-who">' + t.userName + '</span>' : ''}</div>
+            </div>
+          </div>`;
+        }).join('');
+
+    return `<div class="kpi-card" id="kpi-card-${idx}" onclick="toggleKpi(${idx})">
+      <div class="kpi-card-header">
+        <div class="kpi-dot ${cls}"></div>
+        <div class="kpi-info">
+          <div class="kpi-name">${k.name}</div>
+          <div class="kpi-cat">${k.category}</div>
+        </div>
+        <div class="kpi-right">
+          <span class="kpi-badge ${cls}">${label}</span>
+          <span class="kpi-week">W${k.weekDue}</span>
+        </div>
+        <span class="kpi-chevron">▼</span>
       </div>
-      <div class="kpi-right">
-        <span class="kpi-badge ${cls}">${label}</span>
-        <span class="kpi-week">W${k.weekDue}</span>
+      <div class="kpi-expand-body">
+        <div class="kpi-days-line">
+          <span style="color:${cls==='overdue'?'var(--red)':cls==='soon'?'var(--amber-dark)':'var(--text-secondary)'}">${daysText}</span>
+          <span class="kpi-pct-label" style="color:${barColor}">${pct}%</span>
+        </div>
+        <div class="kpi-progress-wrap"><div class="kpi-progress-fill" style="width:${pct}%;background:${barColor}"></div></div>
+        <div class="kpi-linked-tasks">${linkedHtml}</div>
       </div>
     </div>`;
   }).join('');
   document.getElementById('kpiList').innerHTML = kpiHtml || '<div class="empty-state">No KPIs loaded</div>';
+}
+
+// ── KPI expand/collapse ───────────────────────────────────────
+function toggleKpi(idx) {
+  const card = document.getElementById('kpi-card-' + idx);
+  if (!card) return;
+  card.classList.toggle('expanded');
 }
 
 // ── Checklist ────────────────────────────────────────────────
