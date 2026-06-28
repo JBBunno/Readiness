@@ -39,21 +39,22 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sa
   .app{
     max-width:100%;width:100%;height:100vh;
     display:grid;
-    grid-template-rows:auto 1fr;
+    grid-template-rows:56px 1fr;
     grid-template-columns:220px 1fr;
     box-shadow:none;
   }
-  /* Top bar spans full width */
+  /* Topbar — full width single row */
   .topbar{
     grid-column:1 / -1;
     grid-row:1;
-    padding:10px 24px;
     flex-direction:row;
     align-items:center;
+    padding:0 20px;
     gap:0;
+    height:56px;
   }
-  .topbar-row1{flex:0 0 auto;margin-right:24px}
-  .topbar-row2{flex:1;align-items:center;gap:12px}
+  .topbar-row1{flex:0 0 auto;flex-direction:row;align-items:center;gap:10px;margin-right:20px}
+  .topbar-row2{flex:1;flex-direction:row;align-items:center;gap:12px}
   .topbar-row2 .shut-name{font-size:18px}
   .topbar-row3{flex:0 0 auto;flex-direction:row;align-items:center;gap:8px;margin-left:auto}
   .readiness-bar-wrap{width:120px;margin:0 6px}
@@ -68,7 +69,6 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sa
     overflow-y:auto;
     overflow-x:hidden;
     padding:8px 0;
-    height:100%;
   }
   .nav-tab{
     flex:0 0 auto;
@@ -92,24 +92,15 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sa
   /* Content area */
   .views{grid-column:2;grid-row:2;overflow:hidden;background:var(--surface)}
   .view{position:absolute;inset:0;overflow-y:auto}
-  /* Wider layouts for content panels */
-  .metrics-grid{grid-template-columns:repeat(4,1fr);max-width:900px}
+  /* Wider layouts */
+  .metrics-grid{grid-template-columns:repeat(4,1fr);padding:16px 20px}
+  .kpi-list{grid-template-columns:repeat(2,1fr);padding:0 20px 20px}
   .prog-summary{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;max-width:900px}
-  .task-list,.role-filter-wrap{max-width:100%}
+  .section-label{padding:14px 20px 8px}
   .setup-page{max-width:680px;margin:0 auto}
   .report-page{max-width:860px;margin:0 auto}
   .report-body .stat-grid{grid-template-columns:repeat(4,1fr)}
   .action-card{max-width:860px;margin-left:auto;margin-right:auto}
-  /* Topbar rows stacked on desktop */
-  .topbar-row2,.topbar-row3{display:flex}
-  @media(min-width:768px){
-    .topbar{flex-direction:row;align-items:center;padding:0 24px;height:56px;gap:0}
-    .topbar-row1{flex:0 0 auto;flex-direction:row;align-items:center;gap:10px;border-bottom:none;padding:0;margin-right:20px}
-    .topbar-row2{flex:1;flex-direction:row;align-items:center;gap:12px}
-    .topbar-row3{flex:0 0 auto;flex-direction:row;align-items:center;gap:8px;margin-left:auto}
-    .readiness-bar-wrap{width:100px;margin:0 4px}
-    .shut-name{font-size:17px}
-  }
 }
 
 /* ── Top bar ── */
