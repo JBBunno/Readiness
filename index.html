@@ -258,6 +258,29 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sa
 .typing-dots span:nth-child(3){animation-delay:.3s}
 @keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-5px)}}
 
+/* ── Task editor ── */
+.task-editor-filter{display:flex;gap:6px;padding:10px 14px;overflow-x:auto;border-bottom:1px solid var(--border)}
+.task-editor-filter::-webkit-scrollbar{display:none}
+.te-role-btn{font-size:12px;font-weight:500;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--white);color:var(--text-secondary);cursor:pointer;white-space:nowrap}
+.te-role-btn.active{background:var(--navy);color:var(--white);border-color:var(--navy)}
+.task-editor-list{display:flex;flex-direction:column}
+.te-task-row{display:flex;align-items:flex-start;padding:10px 14px;border-bottom:1px solid var(--border);gap:8px;background:var(--white)}
+.te-task-row:hover{background:var(--surface)}
+.te-drag{color:var(--text-muted);font-size:16px;cursor:grab;padding-top:2px;flex-shrink:0;user-select:none}
+.te-task-body{flex:1;display:flex;flex-direction:column;gap:6px;min-width:0}
+.te-desc{font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--white);color:var(--text);font-family:inherit;width:100%;resize:none;line-height:1.4}
+.te-desc:focus{outline:none;border-color:var(--teal)}
+.te-meta-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.te-meta-row select,.te-meta-row input{font-size:12px;padding:4px 7px;border:1px solid var(--border);border-radius:6px;background:var(--white);color:var(--text);font-family:inherit}
+.te-meta-row input[type=number]{width:64px}
+.te-meta-label{font-size:11px;color:var(--text-muted);white-space:nowrap}
+.te-del-btn{width:26px;height:26px;border-radius:50%;border:none;background:var(--red-bg);color:var(--red);font-size:14px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;margin-top:2px}
+.te-add-btn{margin:10px 14px;padding:9px;border:1.5px dashed var(--border);border-radius:8px;background:transparent;color:var(--text-muted);font-size:13px;cursor:pointer;width:calc(100% - 28px);display:flex;align-items:center;justify-content:center;gap:6px}
+.te-add-btn:hover{border-color:var(--teal);color:var(--teal)}
+.te-save-btn{margin:0 14px 14px;padding:12px;border:none;border-radius:8px;background:var(--navy);color:var(--white);font-size:14px;font-weight:600;cursor:pointer;width:calc(100% - 28px)}
+.te-save-btn.success{background:var(--green)}
+.te-task-id{font-size:10px;color:var(--text-muted);font-family:monospace}
+
 /* ── Setup page ── */
 .setup-page{padding:14px;display:flex;flex-direction:column;gap:16px}
 .setup-section{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
@@ -555,6 +578,22 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sa
           </button>
           <button class="setup-save-btn" id="saveRolesBtn" onclick="saveRoles()">Save roles</button>
           <div class="setup-note">PIN must be 4 digits. Turning a role off hides it from the checklist but keeps its task history. Changes take effect on next login.</div>
+        </div>
+
+        <!-- Task editor -->
+        <div class="setup-section">
+          <div class="setup-section-head">
+            Tasks
+            <span style="font-size:10px;color:var(--text-muted);text-transform:none;font-weight:400">edit descriptions, week due, duration, KPI link</span>
+          </div>
+          <div class="task-editor-filter" id="teRoleFilter"></div>
+          <div class="task-editor-list" id="teTaskList"></div>
+          <button class="te-add-btn" onclick="teAddTask()">
+            <svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add task
+          </button>
+          <button class="te-save-btn" id="teTaskSaveBtn" onclick="teSaveTasks()">Save tasks</button>
+          <div class="setup-note">Changing a task ID will lose its completion history. Safe to edit descriptions, week due, duration and KPI link freely.</div>
         </div>
 
       </div>
@@ -1395,6 +1434,135 @@ async function exportReportDocx() {
   btn.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export Word';
 }
 
+// ── Task editor ──────────────────────────────────────────────
+let teTasks = [];      // local editable copy
+let teActiveRole = ''; // currently filtered role
+
+function teInit() {
+  // Clone tasks into editable array
+  teTasks = tasks.map(t => ({ ...t }));
+  const roles = [...new Set(teTasks.map(t => t.role))];
+  teActiveRole = teActiveRole || roles[0] || '';
+
+  // Role filter
+  let filterHtml = roles.map(r =>
+    `<button class="te-role-btn ${r === teActiveRole ? 'active' : ''}" onclick="teSetRole('${r.replace(/'/g, "\\'")}')">${r}</button>`
+  ).join('');
+  document.getElementById('teRoleFilter').innerHTML = filterHtml;
+  teRenderList();
+}
+
+function teSetRole(role) {
+  teActiveRole = role;
+  // Update filter buttons
+  document.querySelectorAll('.te-role-btn').forEach(b => {
+    b.classList.toggle('active', b.textContent === role);
+  });
+  teRenderList();
+}
+
+function teRenderList() {
+  const filtered = teTasks.filter(t => t.role === teActiveRole);
+  const roles = [...new Set(teTasks.map(t => t.role))];
+  const kpiNames = kpis.map(k => k.name);
+
+  const kpiOptions = ['', ...kpiNames].map(k =>
+    `<option value="${k}">${k || '— none —'}</option>`
+  ).join('');
+
+  const roleOptions = roles.map(r =>
+    `<option value="${r}">${r}</option>`
+  ).join('');
+
+  const html = filtered.map((t, i) => {
+    const globalIdx = teTasks.indexOf(t);
+    return `<div class="te-task-row" id="te-row-${globalIdx}">
+      <div class="te-drag" title="Drag to reorder">⠿</div>
+      <div class="te-task-body">
+        <textarea class="te-desc" rows="2"
+          oninput="teTasks[${globalIdx}].description=this.value">${t.description}</textarea>
+        <div class="te-meta-row">
+          <span class="te-meta-label">Role:</span>
+          <select onchange="teTasks[${globalIdx}].role=this.value;teInit()">
+            ${roles.map(r => `<option value="${r}" ${r===t.role?'selected':''}>${r}</option>`).join('')}
+          </select>
+          <span class="te-meta-label">W-due:</span>
+          <input type="number" value="${t.weekDue}" min="-20" max="4"
+            onchange="teTasks[${globalIdx}].weekDue=Number(this.value)">
+          <span class="te-meta-label">Dur:</span>
+          <input type="number" value="${t.duration}" min="1" max="20"
+            onchange="teTasks[${globalIdx}].duration=Number(this.value)">
+          <span class="te-meta-label">KPI:</span>
+          <select onchange="teTasks[${globalIdx}].kpiLink=this.value">
+            ${['', ...kpiNames].map(k =>
+              `<option value="${k}" ${k===t.kpiLink?'selected':''}>${k||'— none —'}</option>`
+            ).join('')}
+          </select>
+          <span class="te-task-id">${t.taskId}</span>
+        </div>
+      </div>
+      <button class="te-del-btn" onclick="teDeleteTask(${globalIdx})" title="Remove task">✕</button>
+    </div>`;
+  }).join('');
+
+  document.getElementById('teTaskList').innerHTML = html || '<div style="padding:14px;color:var(--text-muted);font-size:13px">No tasks for this role</div>';
+}
+
+function teAddTask() {
+  const roles = [...new Set(teTasks.map(t => t.role))];
+  const role = teActiveRole || roles[0] || 'Shut Coordinator';
+  // Generate a new unique ID
+  const existing = teTasks.map(t => t.taskId);
+  let newId = role.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
+  let num = teTasks.filter(t => t.role === role).length + 1;
+  while (existing.includes(newId + String(num).padStart(3,'0'))) num++;
+  const taskId = newId + String(num).padStart(3,'0');
+  const maxSort = Math.max(0, ...teTasks.filter(t => t.role === role).map(t => Number(t.sortOrder)||0));
+  teTasks.push({
+    taskId, role, description: 'New task', weekDue: -4,
+    duration: 1, kpiLink: '', sortOrder: maxSort + 1
+  });
+  teRenderList();
+  // Scroll to bottom of list
+  const list = document.getElementById('teTaskList');
+  list.lastElementChild?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function teDeleteTask(idx) {
+  const task = teTasks[idx];
+  if (!confirm(`Remove "${task.description}"?\n\nThis only removes it from the task list — past completion records are kept.`)) return;
+  teTasks.splice(idx, 1);
+  // Re-sort sortOrder for that role
+  let sort = 1;
+  teTasks.filter(t => t.role === task.role).forEach(t => { t.sortOrder = sort++; });
+  teInit();
+}
+
+async function teSaveTasks() {
+  const btn = document.getElementById('teTaskSaveBtn');
+  btn.textContent = 'Saving…'; btn.disabled = true;
+  try {
+    const res = await api({
+      action: 'saveTasks',
+      tasks: encodeURIComponent(JSON.stringify(teTasks))
+    });
+    if (res.ok) {
+      // Refresh local tasks array
+      tasks = teTasks.map(t => ({ ...t }));
+      renderChecklist();
+      btn.textContent = 'Saved!'; btn.classList.add('success');
+      setTimeout(() => { btn.textContent = 'Save tasks'; btn.classList.remove('success'); btn.disabled = false; }, 2000);
+      showToast('Tasks updated');
+    } else {
+      showToast('Error: ' + (res.error || 'Unknown'));
+      btn.textContent = 'Save tasks'; btn.disabled = false;
+    }
+  } catch(e) {
+    showToast('Error: ' + e.message);
+    btn.textContent = 'Save tasks'; btn.disabled = false;
+  }
+}
+
 // ── Setup ─────────────────────────────────────────────────────
 let setupUsers = []; // local copy of users for editing
 
@@ -1536,7 +1704,7 @@ function showTab(id, el) {
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
   document.getElementById('view-' + id).classList.add('active');
   el.classList.add('active');
-  if (id === 'setup') renderSetupPage();
+  if (id === 'setup') { renderSetupPage(); teInit(); }
 }
 
 // ── Boot ─────────────────────────────────────────────────────
