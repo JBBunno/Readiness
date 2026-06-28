@@ -1209,7 +1209,17 @@ Use markdown headings (##) and bullet points. Be specific and data-driven. Do no
 
   try {
     // Route through GAS backend to avoid CORS issues
-    const res = await api({ action: 'generateReport', prompt: encodeURIComponent(prompt) });
+    // Use POST for report — prompt is too long for GET URL
+    const qs = new URLSearchParams({ action: 'generateReport' }).toString();
+    const postRes = await fetch(GAS_URL + '?' + qs, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      redirect: 'follow',
+      body: encodeURIComponent(prompt)
+    });
+    const postText = await postRes.text();
+    let res;
+    try { res = JSON.parse(postText); } catch(e) { throw new Error('Bad response: ' + postText.slice(0,100)); }
     if (res.error) throw new Error(res.error);
     const text = res.text || '';
     lastReportText = text;
@@ -1247,120 +1257,61 @@ Use markdown headings (##) and bullet points. Be specific and data-driven. Do no
 
 async function exportReportDocx() {
   if (!lastReportText) { showToast('Generate a report first'); return; }
-  showToast('Preparing Word export…');
 
-  // Load docx from CDN
-  if (!window.docx) {
-    await new Promise((res, rej) => {
-      const s = document.createElement('script');
-      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/docx/8.5.0/build/index.min.js';
-      s.onload = res; s.onerror = rej;
-      document.head.appendChild(s);
-    });
-  }
-
-  const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
-          HeadingLevel, AlignmentType, BorderStyle, WidthType, ShadingType,
-          LevelFormat } = window.docx;
+  const btn = document.querySelector('.report-export-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg> Generating…';
 
   const totalTasks = tasks.length;
   const doneTasks = Object.values(statuses).filter(s => s.status === 'done').length;
   const pct = totalTasks ? Math.round(doneTasks / totalTasks * 100) : 0;
   const targetPct = weeksOut >= 12 ? 0 : weeksOut <= 0 ? 100 : Math.round((1 - weeksOut / 12) * 100);
   const variance = pct - targetPct;
-  const openActions = actions.filter(a => a.status === 'Open' || a.status === 'Overdue').length;
-  const dateStr = new Date().toLocaleDateString('en-AU', { day:'2-digit', month:'long', year:'numeric' });
+  const openCount = actions.filter(a => a.status === 'Open' || a.status === 'Overdue').length;
 
-  const border = { style: BorderStyle.SINGLE, size: 1, color: 'CCCCCC' };
-  const borders = { top: border, bottom: border, left: border, right: border };
-  const cell = (text, w, bold=false, shading=null) => new TableCell({
-    width: { size: w, type: WidthType.DXA },
-    borders,
-    margins: { top: 80, bottom: 80, left: 120, right: 120 },
-    ...(shading ? { shading: { fill: shading, type: ShadingType.CLEAR } } : {}),
-    children: [new Paragraph({ children: [new TextRun({ text, bold, font: 'Arial', size: 22 })] })]
-  });
-
-  // Parse markdown sections from AI text
-  const sections = lastReportText.split(/^## /m).filter(Boolean);
-
-  const children = [
-    // Title
-    new Paragraph({
-      heading: HeadingLevel.HEADING_1,
-      children: [new TextRun({ text: (config.shutdownName || 'Shutdown') + ' — Readiness Report', bold: true, font: 'Arial', size: 36 })]
-    }),
-    new Paragraph({ children: [new TextRun({ text: `Generated: ${dateStr} | ${Math.abs(weeksOut)} weeks ${weeksOut>=0?'to shutdown':'post shutdown'} | Revision: ${config.revision||''}`, font: 'Arial', size: 20, color: '666666' })] }),
-    new Paragraph({ children: [new TextRun('')] }),
-
-    // Summary stats table
-    new Table({
-      width: { size: 9360, type: WidthType.DXA },
-      columnWidths: [2340, 2340, 2340, 2340],
-      rows: [
-        new TableRow({ children: [
-          cell('Readiness', 2340, true, 'D5E8F0'),
-          cell('Variance', 2340, true, 'D5E8F0'),
-          cell('Weeks Out', 2340, true, 'D5E8F0'),
-          cell('Open Actions', 2340, true, 'D5E8F0'),
-        ]}),
-        new TableRow({ children: [
-          cell(pct + '%', 2340, true),
-          cell((variance>=0?'+':'')+variance+'%', 2340, true),
-          cell(String(Math.abs(weeksOut)), 2340, true),
-          cell(String(openActions), 2340, true),
-        ]}),
-      ]
-    }),
-    new Paragraph({ children: [new TextRun('')] }),
-  ];
-
-  // Add AI sections
-  sections.forEach(section => {
-    const lines = section.split('\n');
-    const heading = lines[0].trim();
-    children.push(new Paragraph({
-      heading: HeadingLevel.HEADING_2,
-      children: [new TextRun({ text: heading, bold: true, font: 'Arial', size: 28 })]
-    }));
-    lines.slice(1).forEach(line => {
-      const trimmed = line.trim();
-      if (!trimmed) return;
-      const isBullet = trimmed.startsWith('- ') || trimmed.startsWith('* ');
-      const text = isBullet ? trimmed.slice(2) : trimmed;
-      const cleanText = text.replace(/\*\*(.+?)\*\*/g, '$1');
-      children.push(new Paragraph({
-        ...(isBullet ? { numbering: { reference: 'bullets', level: 0 } } : {}),
-        children: [new TextRun({ text: cleanText, font: 'Arial', size: 22 })]
-      }));
+  try {
+    // Use POST for export — report text is too long for GET URL
+    const exportParams = new URLSearchParams({
+      action: 'exportDocx',
+      shutdownName: encodeURIComponent(config.shutdownName || 'Shutdown'),
+      revision: encodeURIComponent(config.revision || ''),
+      weeksOut: weeksOut,
+      pct, variance, openCount
+    }).toString();
+    const exportFetch = await fetch(GAS_URL + '?' + exportParams, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      redirect: 'follow',
+      body: encodeURIComponent(lastReportText)
     });
-    children.push(new Paragraph({ children: [new TextRun('')] }));
-  });
+    const exportText = await exportFetch.text();
+    let res;
+    try { res = JSON.parse(exportText); } catch(e) { throw new Error('Bad response: ' + exportText.slice(0,100)); }
 
-  const doc = new Document({
-    numbering: { config: [{ reference: 'bullets', levels: [{ level: 0, format: LevelFormat.BULLET, text: '\u2022', alignment: AlignmentType.LEFT, style: { paragraph: { indent: { left: 720, hanging: 360 } } } }] }] },
-    styles: {
-      default: { document: { run: { font: 'Arial', size: 22 } } },
-      paragraphStyles: [
-        { id: 'Heading1', name: 'Heading 1', basedOn: 'Normal', next: 'Normal', quickFormat: true,
-          run: { size: 36, bold: true, font: 'Arial', color: '0D1E35' },
-          paragraph: { spacing: { before: 240, after: 120 }, outlineLevel: 0 } },
-        { id: 'Heading2', name: 'Heading 2', basedOn: 'Normal', next: 'Normal', quickFormat: true,
-          run: { size: 28, bold: true, font: 'Arial', color: '0D1E35' },
-          paragraph: { spacing: { before: 200, after: 80 }, outlineLevel: 1 } },
-      ]
-    },
-    sections: [{ properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 } } }, children }]
-  });
+    if (res.error) throw new Error(res.error);
+    if (!res.base64) throw new Error('No file returned');
 
-  const blob = await Packer.toBlob(doc);
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = (config.shutdownName || 'Shutdown').replace(/\s+/g, '_') + '_Readiness_Report_' + new Date().toISOString().slice(0,10) + '.docx';
-  a.click();
-  URL.revokeObjectURL(url);
-  showToast('Word document downloaded');
+    // Decode base64 and trigger download
+    const binary = atob(res.base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = (config.shutdownName || 'Shutdown').replace(/\s+/g, '_') + '_Readiness_Report_' + new Date().toISOString().slice(0,10) + '.docx';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Word document downloaded');
+
+  } catch(e) {
+    showToast('Export failed: ' + e.message);
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export Word';
 }
 
 // ── Setup ─────────────────────────────────────────────────────
