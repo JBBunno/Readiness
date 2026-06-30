@@ -133,22 +133,36 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sa
 .dash-page{padding:14px;display:flex;flex-direction:column;gap:14px}
 .dash-header-card{
   background:var(--white);border:1px solid var(--border);border-radius:var(--radius);
-  display:flex;flex-wrap:wrap;gap:14px;padding:14px;align-items:stretch;
+  overflow:hidden;
 }
-.dash-header-left{flex:1;min-width:200px}
-.dash-info-table{width:100%;border-collapse:collapse;font-size:12px}
-.dash-info-table td{padding:3px 6px;border-bottom:1px solid var(--border)}
-.dash-info-label{color:var(--text-muted);font-weight:500;white-space:nowrap}
-.dash-info-val{color:var(--text);font-weight:600;text-align:right}
-.dash-header-mid{flex:0 0 140px;display:flex;flex-direction:column;justify-content:center;gap:6px;border-left:1px solid var(--border);border-right:1px solid var(--border);padding:0 14px}
-.dash-measure-label{font-size:10px;color:var(--text-muted);letter-spacing:.06em;text-align:center;margin-bottom:2px}
-.dash-measure-row{display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary)}
-.dash-target-val{font-weight:700;color:var(--navy)}
-.dash-actual-row{font-size:20px;align-items:center}
-.dash-actual-val{font-weight:800;padding:2px 10px;border-radius:6px}
-.dash-header-right{flex:0 0 140px;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;text-align:right}
-.dash-logo-text{font-size:18px;font-weight:300;letter-spacing:.12em;color:var(--navy)}
-.dash-logo-sub{font-size:9px;letter-spacing:.1em;color:var(--teal-dark);font-weight:600}
+.dash-title-bar{
+  background:var(--navy);color:var(--white);padding:12px 16px;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.dash-title-name{font-size:22px;font-weight:700;letter-spacing:-.01em}
+.dash-title-logo{font-size:16px;font-weight:300;letter-spacing:.08em}
+.dash-title-logo strong{font-weight:800}
+.dash-info-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;background:var(--border)}
+.dash-info-cell{background:var(--white);display:flex;flex-direction:column}
+.dash-info-cell-label{
+  background:var(--navy);color:var(--white);font-size:12px;font-weight:600;
+  padding:9px 12px;
+}
+.dash-info-cell-val{
+  font-size:14px;font-weight:700;color:var(--text);padding:9px 12px;
+  display:flex;align-items:center;
+}
+.dash-measure-cell .dash-info-cell-val{font-size:20px;justify-content:flex-start}
+.dash-measure-cell.dash-actual-cell .dash-info-cell-val{color:var(--red)}
+.dash-measure-cell.dash-actual-cell.on-pace .dash-info-cell-val{color:var(--green)}
+.dash-measure-cell.dash-target-cell .dash-info-cell-val{color:var(--green);font-size:18px}
+@media(max-width:600px){
+  .dash-info-grid{grid-template-columns:1fr 1fr 1fr;font-size:11px}
+  .dash-info-cell-label{padding:6px 8px;font-size:10px}
+  .dash-info-cell-val{padding:6px 8px;font-size:12px}
+  .dash-measure-cell .dash-info-cell-val{font-size:15px}
+  .dash-title-name{font-size:16px}
+}
 
 .dash-phases{display:flex;gap:2px}
 .dash-phase{
@@ -590,28 +604,23 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sa
 
         <!-- Header block -->
         <div class="dash-header-card">
-          <div class="dash-header-left">
-            <table class="dash-info-table">
-              <tr><td class="dash-info-label">Shutdown</td><td class="dash-info-val" id="dh-name">—</td></tr>
-              <tr><td class="dash-info-label">Current date</td><td class="dash-info-val" id="dh-today">—</td></tr>
-              <tr><td class="dash-info-label">Start date</td><td class="dash-info-val" id="dh-start">—</td></tr>
-              <tr><td class="dash-info-label">Duration</td><td class="dash-info-val" id="dh-duration">—</td></tr>
-              <tr><td class="dash-info-label">Weeks out</td><td class="dash-info-val" id="dh-weeksout">—</td></tr>
-              <tr><td class="dash-info-label">Days out</td><td class="dash-info-val" id="dh-daysout">—</td></tr>
-            </table>
+          <div class="dash-title-bar">
+            <div class="dash-title-name" id="dh-name">—</div>
+            <div class="dash-title-logo">PALM<strong>CREST</strong></div>
           </div>
-          <div class="dash-header-mid">
-            <div class="dash-measure-label">MEASURE</div>
-            <div class="dash-measure-row">
-              <span>Target</span><span class="dash-target-val" id="dh-target">—</span>
+          <div class="dash-info-grid">
+            <div class="dash-info-cell"><div class="dash-info-cell-label">Current Date</div><div class="dash-info-cell-val" id="dh-today">—</div></div>
+            <div class="dash-info-cell"><div class="dash-info-cell-label">Duration</div><div class="dash-info-cell-val" id="dh-duration">—</div></div>
+            <div class="dash-info-cell dash-measure-cell dash-actual-cell" id="dh-actual-cell">
+              <div class="dash-info-cell-label">Actual</div>
+              <div class="dash-info-cell-val" id="dh-actual">—</div>
             </div>
-            <div class="dash-measure-row dash-actual-row">
-              <span>Actual</span><span class="dash-actual-val" id="dh-actual">—</span>
+            <div class="dash-info-cell"><div class="dash-info-cell-label">Start Date</div><div class="dash-info-cell-val" id="dh-start">—</div></div>
+            <div class="dash-info-cell"><div class="dash-info-cell-label">Weeks Out</div><div class="dash-info-cell-val" id="dh-weeksout">—</div></div>
+            <div class="dash-info-cell dash-measure-cell dash-target-cell">
+              <div class="dash-info-cell-label">Target</div>
+              <div class="dash-info-cell-val" id="dh-target">—</div>
             </div>
-          </div>
-          <div class="dash-header-right">
-            <div class="dash-logo-text">PALM CREST</div>
-            <div class="dash-logo-sub">SCHEDULING SOLUTIONS</div>
           </div>
         </div>
 
@@ -1227,19 +1236,18 @@ function renderDashboard() {
   // ── Header block ──
   const [sy, sm, sd] = (config.startDate || '2099-01-01').split('-').map(Number);
   const startDateObj = new Date(sy, sm - 1, sd);
-  document.getElementById('dh-name').textContent = config.shutdownName || '—';
+  document.getElementById('dh-name').textContent = (config.shutdownName || 'Shutdown').toUpperCase();
   document.getElementById('dh-today').textContent = new Date().toLocaleDateString('en-AU');
-  document.getElementById('dh-start').textContent = startDateObj.toLocaleDateString('en-AU', { day:'2-digit', month:'short' });
+  document.getElementById('dh-start').textContent = startDateObj.toLocaleDateString('en-AU', { day:'2-digit', month:'2-digit', year:'2-digit' });
   document.getElementById('dh-duration').textContent = config.duration || '—';
-  document.getElementById('dh-weeksout').textContent = (weeksOut >= 0 ? weeksOut : Math.abs(weeksOut)) + (weeksOut >= 0 ? ' WKS' : ' WKS POST');
-  document.getElementById('dh-daysout').textContent = (weeksOut >= 0 ? weeksOut*7 : -(Math.abs(weeksOut)*7)) + ' Days';
+  document.getElementById('dh-weeksout').textContent = (weeksOut >= 0 ? weeksOut : Math.abs(weeksOut)) + (weeksOut >= 0 ? ' Weeks' : ' Wks post');
 
   document.getElementById('dh-target').textContent = targetPct + '%';
 
   const actualEl = document.getElementById('dh-actual');
   actualEl.textContent = pct + '%';
-  actualEl.style.background = pct >= 80 ? 'var(--green-bg)' : pct >= 50 ? 'var(--amber-bg)' : 'var(--red-bg)';
-  actualEl.style.color = pct >= 80 ? 'var(--green)' : pct >= 50 ? 'var(--amber-dark)' : 'var(--red)';
+  const onPace = pct >= targetPct;
+  document.getElementById('dh-actual-cell').classList.toggle('on-pace', onPace);
 
   // ── Phase chevrons (Planning / Scheduling / Execution) ──
   const phaseColors = { Planning: '#5a6a80', Scheduling: '#8a98a8', Execution: '#c4ccd6' };
