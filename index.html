@@ -1297,28 +1297,27 @@ function renderDashboard() {
     const pctRole = roleTasks.length ? Math.round(done2/roleTasks.length*100) : 0;
     timelineHtml += `<tr><td class="role-label">${role} <span style="float:right;font-weight:700">${pctRole}%</span></td>`;
     weekCols.forEach(w => {
-      // Tasks whose tracked range (weekDue to weekDue+duration-1) includes this week
-      const tasksInRange = roleTasks.filter(t => {
-        const weekDue = Number(t.weekDue);
-        const duration = Number(t.duration) || 1;
-        const startWeek = weekDue + duration - 1;
-        return w <= startWeek && w >= weekDue;
-      });
       const isPastWeek = w < weeksOut; // weeks count down toward shutdown — a lower number means it has already elapsed
-      let cellPct = 0, cellColor = 'transparent'; // default transparent — only colour cells with actual tracked tasks
+      // All status entries recorded for this role at this specific calendar week, regardless of each task's own tracked range
+      const ticksAtWeek = roleTasks
+        .map(t => statuses[cellKey(t.taskId, w)]?.status)
+        .filter(s => s === 'done' || s === 'behind');
+      const doneAtWeek = ticksAtWeek.filter(s => s === 'done').length;
+      const behindAtWeek = ticksAtWeek.filter(s => s === 'behind').length;
+
+      let cellColor = 'transparent';
       let cellText = '';
-      if (tasksInRange.length) {
-        // Use the actual per-week cell status for this specific column
-        const doneAtWeek = tasksInRange.filter(t => statuses[cellKey(t.taskId, w)]?.status === 'done').length;
-        const behindAtWeek = tasksInRange.filter(t => statuses[cellKey(t.taskId, w)]?.status === 'behind').length;
-        cellPct = Math.round(doneAtWeek / tasksInRange.length * 100);
+      if (ticksAtWeek.length > 0) {
+        const cellPct = Math.round(doneAtWeek / ticksAtWeek.length * 100);
         cellText = cellPct + '%';
         if (cellPct >= 100) cellColor = '#1D9E75';        // fully done — green
         else if (doneAtWeek > 0) cellColor = '#EF9F27';     // partially done — amber
         else if (behindAtWeek > 0) cellColor = '#E24B4A';   // explicitly marked behind — red
-        else if (isPastWeek) cellColor = '#dde4ed';         // past, tracked, untouched — neutral grey
-        // future, untouched, in-range weeks stay transparent
+      } else if (isPastWeek) {
+        cellColor = '#dde4ed';                              // past calendar week, nothing ticked — neutral grey
       }
+      // future weeks with nothing ticked stay transparent
+
       const textColor = cellColor === 'transparent' ? 'inherit' : (cellColor === '#dde4ed' ? 'var(--text-muted)' : 'white');
       timelineHtml += `<td style="background:${cellColor};color:${textColor};font-weight:700">${cellText}</td>`;
     });
