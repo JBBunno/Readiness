@@ -1327,14 +1327,13 @@ function renderDashboard() {
 
     // Planned (denominator) = cells at or before the current week (already elapsed/active)
     const plannedCells = allCells.filter(c => c.week >= weeksOut);
-    // Actual (numerator) = cells anywhere marked done
-    const doneCells = allCells.filter(c => statuses[cellKey(c.taskId, c.week)]?.status === 'done');
+    // Actual (numerator) = of the planned cells, how many are ticked done
+    const doneCells = plannedCells.filter(c => statuses[cellKey(c.taskId, c.week)]?.status === 'done');
     const pctRole = plannedCells.length ? Math.round(doneCells.length / plannedCells.length * 100) : 0;
 
     timelineHtml += `<tr><td class="role-label">${role} <span style="float:right;font-weight:700">${pctRole}%</span></td>`;
 
     weekCols.forEach(w => {
-      const isPastWeek = w >= weeksOut; // weeks count down toward shutdown — current week and earlier (numerically higher) are "elapsed/active"
       // Cells that exist for this role at this exact week (within some task's tracked range)
       const cellsAtWeek = allCells.filter(c => c.week === w);
       let cellColor = 'transparent';
@@ -1351,12 +1350,11 @@ function renderDashboard() {
           if (cellPct >= 100) cellColor = '#1D9E75';        // fully done — green
           else if (doneAtWeek > 0) cellColor = '#EF9F27';     // partially done — amber
           else cellColor = '#E24B4A';                          // marked behind, none done — red
-        } else if (isPastWeek) {
-          cellColor = '#dde4ed';                                // tracked here, current/elapsed week, nothing ticked — grey
+        } else {
+          cellColor = '#dde4ed';                                // tracked here, untouched — grey, regardless of timing
         }
-        // tracked here but a future week, untouched — stays transparent
       }
-      // no task tracked at this week at all — stays transparent regardless of past/future
+      // no task tracked at this week at all — stays transparent
 
       const textColor = cellColor === 'transparent' ? 'inherit' : (cellColor === '#dde4ed' ? 'var(--text-muted)' : 'white');
       timelineHtml += `<td style="background:${cellColor};color:${textColor};font-weight:700">${cellText}</td>`;
