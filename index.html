@@ -264,6 +264,10 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sa
 .action-footer{padding:8px 13px;background:var(--surface);border-top:1px solid var(--border);display:flex;align-items:center;gap:12px;font-size:11px;color:var(--text-muted);flex-wrap:wrap}
 .action-footer strong{color:var(--text-secondary)}
 .overdue-tag{margin-left:auto;background:var(--red-bg);color:var(--red);font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px}
+.complete-action-btn{margin-left:auto;display:flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:5px 10px;border-radius:20px;background:var(--green);color:white;border:none;cursor:pointer}
+.complete-action-btn svg{width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.action-card.action-closed{opacity:.6}
+.action-done-badge{font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;background:var(--green-bg);color:var(--green);margin-left:6px}
 
 /* ── Progress ── */
 .prog-summary{padding:14px;display:flex;flex-direction:column;gap:10px}
@@ -947,7 +951,14 @@ const DEMO_KPIS = (() => {
       {taskId:'SP008',description:'Review and close out completed work orders',role:'Shut Planner',weekDue:1,status:'none'},
       {taskId:'SP009',description:'Post-shutdown report ready',role:'Shut Planner',weekDue:1,status:'none'}]},
   ];
-})();
+})().map(k => {
+  // Demo weeksOut assumed to be 11 (matches SD=77 days / 7)
+  const demoWeeksOut = 11;
+  const windowStart = -12, dueWeek = Number(k.weekDue);
+  const progress = (windowStart - (-demoWeeksOut)) / (windowStart - dueWeek);
+  k.targetPct = Math.max(0, Math.min(100, Math.round(progress * 100)));
+  return k;
+});
 
 const DEMO_ACTIONS = [
   {actionId:'ACT001',status:'Open',priority:'High',area:'TLO Chute',weekDue:-6,description:'Organise workshop for TLO chute component changeout and produce detailed scope',assignedTo:'Martin & Jon A',daysLeft:-70},
@@ -963,6 +974,37 @@ let currentUser = null;
 let config = {};
 let tasks = [];
 let statuses = {};
+
+// ── Status helpers — statuses keyed by "taskId:week" ────────────
+// Returns true if ANY tracked week for this task is marked done
+function taskIsDone(taskId) {
+  for (const key in statuses) {
+    if (key.startsWith(taskId + ':') && statuses[key].status === 'done') return true;
+  }
+  return false;
+}
+// Returns true if task has any 'behind' week and no 'done' weeks
+function taskIsBehind(taskId) {
+  let hasBehind = false;
+  for (const key in statuses) {
+    if (key.startsWith(taskId + ':')) {
+      if (statuses[key].status === 'done') return false;
+      if (statuses[key].status === 'behind') hasBehind = true;
+    }
+  }
+  return hasBehind;
+}
+// Most recent userName who updated any week of this task
+function taskLastUser(taskId) {
+  let latest = null, latestKey = null;
+  for (const key in statuses) {
+    if (key.startsWith(taskId + ':') && statuses[key].userName) {
+      latest = statuses[key].userName;
+    }
+  }
+  return latest;
+}
+function cellKey(taskId, week) { return taskId + ':' + week; }
 let kpis = [];
 let actions = [];
 let weeksOut = 0;
@@ -1044,12 +1086,17 @@ function demoApi(body) {
   if (action === 'getKPIs')     return Promise.resolve(DEMO_KPIS);
   if (action === 'getActions')  return Promise.resolve([...DEMO_ACTIONS, ...actions.filter(a => a._local)]);
   if (action === 'getStatuses') {
-    return Promise.resolve(Object.entries(demoStatuses).map(([taskId, s]) => ({
-      taskId, status: s.status, userName: s.userName
-    })));
+    // demoStatuses keyed by "taskId:week" already (cellKey format)
+    return Promise.resolve(Object.entries(demoStatuses).map(([key, s]) => {
+      const lastColon = key.lastIndexOf(':');
+      const taskId = key.substring(0, lastColon);
+      const week = key.substring(lastColon + 1);
+      return { taskId, week: week === 'na' ? '' : week, status: s.status, userName: s.userName };
+    }));
   }
   if (action === 'setStatus') {
-    demoStatuses[body.taskId] = { status: body.status, userName: body.userName };
+    const key = body.taskId + ':' + (body.week !== undefined && body.week !== '' ? body.week : 'na');
+    demoStatuses[key] = { status: body.status, userName: body.userName };
     return Promise.resolve({ ok: true });
   }
   if (action === 'addAction') {
@@ -1063,6 +1110,11 @@ function demoApi(body) {
     return Promise.resolve(Object.entries(DEMO_USERS).map(([pin, u]) => ({
       userId: u.userId, name: u.name, role: u.role, pin, active: true
     })));
+  }
+  if (action === 'closeAction') {
+    const a = actions.find(x => x.actionId === body.actionId);
+    if (a) a.status = 'Closed';
+    return Promise.resolve({ ok: true });
   }
   if (action === 'saveConfig' || action === 'saveUsers') return Promise.resolve({ ok: true });
   return Promise.resolve({ ok: true });
@@ -1108,9 +1160,12 @@ async function loadAll() {
   kpis = k;
   actions = a;
 
-  // Build status map (merge GAS/demo data with any in-memory demo changes)
+  // Build status map keyed by "taskId:week" for per-cell gantt tracking
   statuses = {};
-  s.forEach(r => { statuses[r.taskId] = { status: r.status, userName: r.userName }; });
+  s.forEach(r => {
+    const wk = (r.week !== undefined && r.week !== '' && r.week !== null) ? r.week : 'na';
+    statuses[r.taskId + ':' + wk] = { status: r.status, userName: r.userName };
+  });
   if (DEMO_MODE) Object.entries(demoStatuses).forEach(([id,v]) => { statuses[id] = v; });
 
   // Compute weeks out — parse as local date to avoid UTC offset shifting the day
@@ -1124,7 +1179,7 @@ async function loadAll() {
   document.getElementById('weeksPill').style.background = weeksOut <= 2 ? 'var(--red)' : weeksOut <= 5 ? 'var(--amber)' : 'var(--amber)';
 
   // Readiness
-  const done = Object.values(statuses).filter(s => s.status === 'done').length;
+  const done = tasks.filter(t => taskIsDone(t.taskId)).length;
   const total = tasks.length;
   const pct = total ? Math.round((done / total) * 100) : 0;
   document.getElementById('readinessBar').style.width = pct + '%';
@@ -1139,10 +1194,10 @@ async function loadAll() {
 
 // ── Dashboard ────────────────────────────────────────────────
 function renderDashboard() {
-  const done = Object.values(statuses).filter(s => s.status === 'done').length;
+  const done = tasks.filter(t => taskIsDone(t.taskId)).length;
   const total = tasks.length;
   const pct = total ? Math.round((done / total) * 100) : 0;
-  const behind = Object.values(statuses).filter(s => s.status === 'behind').length;
+  const behind = tasks.filter(t => taskIsBehind(t.taskId)).length;
   const targetPct = weeksOut >= 12 ? 0 : weeksOut <= 0 ? 100 : Math.round((1 - weeksOut / 12) * 100);
   const variance = pct - targetPct;
   const openActions = actions.filter(a => a.status === 'Open' || a.status === 'Overdue').length;
@@ -1173,18 +1228,22 @@ function renderDashboard() {
     return `<div class="dash-phase" style="background:${isActive ? 'var(--navy)' : '#b8c0cc'}">${p}</div>`;
   }).join('');
 
-  // ── KPI summary strip (compact cells) ──
+  // ── KPI summary strip (compact cells with target vs actual) ──
   document.getElementById('dashKpiStrip').innerHTML = kpis.map(k => {
     const days = Number(k.daysLeft);
     const kpct = Number(k.actualPct) || 0;
+    const tpct = Number(k.targetPct) || 0;
     let cls = 'future', barColor = 'var(--teal)';
     if (kpct >= 100)     { cls = 'ok';      barColor = 'var(--green)'; }
     else if (days < 0)   { cls = 'overdue'; barColor = 'var(--red)'; }
     else if (days < 14)  { cls = 'soon';    barColor = 'var(--amber)'; }
     return `<div class="dash-kpi-cell ${cls}">
       <div class="dash-kpi-cell-name">${k.name}</div>
-      <div class="dash-kpi-cell-meta"><span>W${k.weekDue}</span><span>${kpct}%</span></div>
-      <div class="dash-kpi-cell-bar"><div class="dash-kpi-cell-fill" style="width:${kpct}%;background:${barColor}"></div></div>
+      <div class="dash-kpi-cell-meta"><span>W${k.weekDue}</span><span>${kpct}% / ${tpct}%</span></div>
+      <div class="dash-kpi-cell-bar" style="position:relative">
+        <div class="dash-kpi-cell-fill" style="width:${kpct}%;background:${barColor}"></div>
+        <div style="position:absolute;top:-1px;left:${tpct}%;width:2px;height:6px;background:var(--navy)"></div>
+      </div>
     </div>`;
   }).join('');
 
@@ -1203,7 +1262,7 @@ function renderDashboard() {
 
   roles.forEach(role => {
     const roleTasks = tasks.filter(t => t.role === role);
-    const done2 = roleTasks.filter(t => statuses[t.taskId]?.status === 'done').length;
+    const done2 = roleTasks.filter(t => taskIsDone(t.taskId)).length;
     const pctRole = roleTasks.length ? Math.round(done2/roleTasks.length*100) : 0;
     timelineHtml += `<tr><td class="role-label">${role} <span style="float:right;font-weight:700">${pctRole}%</span></td>`;
     weekCols.forEach(w => {
@@ -1211,7 +1270,7 @@ function renderDashboard() {
       const tasksAtWeek = roleTasks.filter(t => Number(t.weekDue) === w);
       let cellPct = 0, cellColor = 'transparent';
       if (tasksAtWeek.length) {
-        const doneAtWeek = tasksAtWeek.filter(t => statuses[t.taskId]?.status === 'done').length;
+        const doneAtWeek = tasksAtWeek.filter(t => taskIsDone(t.taskId)).length;
         cellPct = Math.round(doneAtWeek / tasksAtWeek.length * 100);
         cellColor = cellPct >= 100 ? '#1D9E75' : cellPct > 0 ? '#EF9F27' : (w <= weeksOut ? '#E24B4A' : 'transparent');
       }
@@ -1304,6 +1363,7 @@ function renderKpis() {
   const kpiHtml = kpis.map((k, idx) => {
     const days = Number(k.daysLeft);
     const pct  = Number(k.actualPct) || 0;
+    const targetPct = Number(k.targetPct) || 0;
     let cls = 'future', label = 'W' + k.weekDue;
     if (pct >= 100)   { cls = 'ok';      label = 'Done'; }
     else if (days < 0)  { cls = 'overdue'; label = 'Overdue'; }
@@ -1349,9 +1409,12 @@ function renderKpis() {
       <div class="kpi-expand-body">
         <div class="kpi-days-line">
           <span style="color:${cls==='overdue'?'var(--red)':cls==='soon'?'var(--amber-dark)':'var(--text-secondary)'}">${daysText}</span>
-          <span class="kpi-pct-label" style="color:${barColor}">${pct}%</span>
+          <span class="kpi-pct-label" style="color:${barColor}">${pct}% <span style="color:var(--text-muted);font-weight:500">/ ${targetPct}% target</span></span>
         </div>
-        <div class="kpi-progress-wrap"><div class="kpi-progress-fill" style="width:${pct}%;background:${barColor}"></div></div>
+        <div class="kpi-progress-wrap" style="position:relative">
+          <div class="kpi-progress-fill" style="width:${pct}%;background:${barColor}"></div>
+          <div style="position:absolute;top:-1px;left:${targetPct}%;width:2px;height:7px;background:var(--navy)" title="Target: ${targetPct}%"></div>
+        </div>
         <div class="kpi-linked-tasks">${linkedHtml}</div>
       </div>
     </div>`;
@@ -1392,13 +1455,11 @@ function renderChecklist() {
 
   visibleRoles.forEach(role => {
     const roleTasks = tasks.filter(t => t.role === role);
-    const donePct = roleTasks.length ? Math.round(roleTasks.filter(t => statuses[t.taskId]?.status === 'done').length / roleTasks.length * 100) : 0;
+    const donePct = roleTasks.length ? Math.round(roleTasks.filter(t => taskIsDone(t.taskId)).length / roleTasks.length * 100) : 0;
 
     html += `<tr class="gantt-role-row"><td colspan="${weekCols.length + 1}">${role} — ${donePct}% complete</td></tr>`;
 
     roleTasks.forEach(t => {
-      const st = statuses[t.taskId];
-      const status = st?.status || 'none';
       const canEdit = currentUser.role === 'Admin' || currentUser.role === role;
       const weekDue = Number(t.weekDue);
       const duration = Number(t.duration) || 1;
@@ -1414,12 +1475,13 @@ function renderChecklist() {
         let cellContent = '';
         if (inRange) {
           cellClass += ' in-range';
-          if (status === 'done') { cellClass += ' done'; cellContent = '<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>'; }
-          else if (status === 'behind') { cellClass += ' behind'; cellContent = '<svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'; }
+          const cellStatus = statuses[cellKey(t.taskId, w)]?.status || 'none';
+          if (cellStatus === 'done') { cellClass += ' done'; cellContent = '<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>'; }
+          else if (cellStatus === 'behind') { cellClass += ' behind'; cellContent = '<svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'; }
         }
         if (w === weeksOut) cellClass += ' current-week';
         if (!canEdit) cellClass += ' gantt-readonly';
-        const onclick = (canEdit && inRange) ? `onclick="toggleGanttCell('${t.taskId.replace(/'/g,"\\'")}','${role.replace(/'/g,"\\'")}')"` : '';
+        const onclick = (canEdit && inRange) ? `onclick="toggleGanttCell('${t.taskId.replace(/'/g,"\\'")}','${role.replace(/'/g,"\\'")}',${w})"` : '';
         html += `<td class="${cellClass}" ${onclick}>${cellContent}</td>`;
       });
 
@@ -1432,7 +1494,7 @@ function renderChecklist() {
 }
 
 function updateReadinessBar() {
-  const done = Object.values(statuses).filter(s => s.status === 'done').length;
+  const done = tasks.filter(t => taskIsDone(t.taskId)).length;
   const pct = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
   document.getElementById('readinessBar').style.width = pct + '%';
   document.getElementById('readinessPct').textContent = pct + '%';
@@ -1443,17 +1505,19 @@ function setRole(r) {
   renderChecklist();
 }
 
-async function toggleGanttCell(taskId, role) {
+async function toggleGanttCell(taskId, role, week) {
   if (currentUser.role !== 'Admin' && currentUser.role !== role) return;
-  const current = statuses[taskId]?.status || 'none';
+  const key = cellKey(taskId, week);
+  const current = statuses[key]?.status || 'none';
   const next = current === 'none' ? 'done' : current === 'done' ? 'behind' : 'none';
-  statuses[taskId] = { status: next, userName: currentUser.name };
+  statuses[key] = { status: next, userName: currentUser.name };
 
   updateReadinessBar();
   renderChecklist();
+  renderDashboard();
   if (activeRole === role || activeRole === 'all') renderProgress();
 
-  await api({ action: 'setStatus', taskId, status: next, userId: currentUser.userId, userName: currentUser.name });
+  await api({ action: 'setStatus', taskId, status: next, userId: currentUser.userId, userName: currentUser.name, week });
 }
 
 // ── Actions ──────────────────────────────────────────────────
@@ -1472,22 +1536,37 @@ function renderActions() {
   const html = filtered.map(a => {
     const isOverdue = Number(a.daysLeft) < 0;
     const priClass = a.priority === 'High' ? 'high' : 'medium';
-    return `<div class="action-card">
+    const isClosed = a.status === 'Closed';
+    return `<div class="action-card ${isClosed ? 'action-closed' : ''}">
       <div class="action-card-body">
         <div class="action-priority-row">
           <div class="priority-dot ${priClass}"></div>
           <span class="priority-label ${priClass}">${a.priority}</span>
+          ${isClosed ? '<span class="action-done-badge">Completed</span>' : ''}
         </div>
         <div class="action-text">${a.description}</div>
       </div>
       <div class="action-footer">
         <span>Assigned: <strong>${a.assignedTo || '—'}</strong></span>
         <span>Due: <strong>W${a.weekDue}</strong></span>
-        ${isOverdue ? `<span class="overdue-tag">${Math.abs(a.daysLeft)} days overdue</span>` : ''}
+        ${isOverdue && !isClosed ? `<span class="overdue-tag">${Math.abs(a.daysLeft)} days overdue</span>` : ''}
+        ${!isClosed ? `<button class="complete-action-btn" onclick="completeAction('${a.actionId}')">
+          <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Complete
+        </button>` : ''}
       </div>
     </div>`;
   }).join('');
   document.getElementById('actionListContainer').innerHTML = html;
+}
+
+async function completeAction(actionId) {
+  const action = actions.find(a => a.actionId === actionId);
+  if (!action) return;
+  action.status = 'Closed';
+  renderActions();
+  renderDashboard(); // refresh action pie chart
+  await api({ action: 'closeAction', actionId, closedBy: currentUser.name });
+  showToast('Action marked complete');
 }
 
 function openModal() { document.getElementById('modalOverlay').classList.add('open'); }
@@ -1519,8 +1598,8 @@ function renderProgress() {
   const roles = [...new Set(tasks.map(t => t.role))];
   const html = roles.map(role => {
     const roleTasks = tasks.filter(t => t.role === role);
-    const done = roleTasks.filter(t => statuses[t.taskId]?.status === 'done').length;
-    const behind = roleTasks.filter(t => statuses[t.taskId]?.status === 'behind').length;
+    const done = roleTasks.filter(t => taskIsDone(t.taskId)).length;
+    const behind = roleTasks.filter(t => taskIsBehind(t.taskId)).length;
     const pct = roleTasks.length ? Math.round((done / roleTasks.length) * 100) : 0;
     const cls = pct >= 70 ? 'success' : pct >= 40 ? 'warning' : 'danger';
     const barColor = pct >= 70 ? 'var(--green)' : pct >= 40 ? 'var(--amber)' : 'var(--red)';
@@ -1562,8 +1641,8 @@ async function generateReport() {
 
   // Build data snapshot for prompt
   const totalTasks = tasks.length;
-  const doneTasks = Object.values(statuses).filter(s => s.status === 'done').length;
-  const behindTasks = Object.values(statuses).filter(s => s.status === 'behind').length;
+  const doneTasks = tasks.filter(t => taskIsDone(t.taskId)).length;
+  const behindTasks = tasks.filter(t => taskIsBehind(t.taskId)).length;
   const pct = totalTasks ? Math.round(doneTasks / totalTasks * 100) : 0;
   const targetPct = weeksOut >= 12 ? 0 : weeksOut <= 0 ? 100 : Math.round((1 - weeksOut / 12) * 100);
   const variance = pct - targetPct;
@@ -1571,8 +1650,8 @@ async function generateReport() {
   // Role progress
   const roleProgress = [...new Set(tasks.map(t => t.role))].map(role => {
     const rt = tasks.filter(t => t.role === role);
-    const d = rt.filter(t => statuses[t.taskId]?.status === 'done').length;
-    const b = rt.filter(t => statuses[t.taskId]?.status === 'behind').length;
+    const d = rt.filter(t => taskIsDone(t.taskId)).length;
+    const b = rt.filter(t => taskIsBehind(t.taskId)).length;
     return { role, total: rt.length, done: d, behind: b, pct: Math.round(d / rt.length * 100) };
   });
 
@@ -1678,7 +1757,7 @@ async function exportReportDocx() {
   btn.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg> Generating…';
 
   const totalTasks = tasks.length;
-  const doneTasks = Object.values(statuses).filter(s => s.status === 'done').length;
+  const doneTasks = tasks.filter(t => taskIsDone(t.taskId)).length;
   const pct = totalTasks ? Math.round(doneTasks / totalTasks * 100) : 0;
   const targetPct = weeksOut >= 12 ? 0 : weeksOut <= 0 ? 100 : Math.round((1 - weeksOut / 12) * 100);
   const variance = pct - targetPct;
