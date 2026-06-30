@@ -1188,8 +1188,6 @@ async function loadAll() {
     statuses[r.taskId + ':' + wk] = { status: r.status, userName: r.userName };
   });
   if (DEMO_MODE) Object.entries(demoStatuses).forEach(([id,v]) => { statuses[id] = v; });
-  console.log('[SRD] Loaded', s.length, 'status rows ->', Object.keys(statuses).length, 'unique cells');
-  console.log('[SRD] Sample statuses:', Object.entries(statuses).slice(0, 5));
 
   // Compute weeks out — parse as local date to avoid UTC offset shifting the day
   const [sy, sm, sd] = (config.startDate || '2099-01-01').split('-').map(Number);
@@ -1301,13 +1299,16 @@ function renderDashboard() {
         // Use the actual per-week cell status for this specific column
         const doneAtWeek = tasksInRange.filter(t => statuses[cellKey(t.taskId, w)]?.status === 'done').length;
         const behindAtWeek = tasksInRange.filter(t => statuses[cellKey(t.taskId, w)]?.status === 'behind').length;
+        const isPastWeek = w > weeksOut; // weeks count down to 0 at shutdown; a week is "past" once we've moved beyond it
         cellPct = Math.round(doneAtWeek / tasksInRange.length * 100);
-        if (cellPct >= 100) cellColor = '#1D9E75';
-        else if (doneAtWeek > 0) cellColor = '#EF9F27';
-        else if (behindAtWeek > 0) cellColor = '#E24B4A';
-        else if (w <= weeksOut) cellColor = '#E24B4A';
+        if (cellPct >= 100) cellColor = '#1D9E75';        // fully done — green
+        else if (doneAtWeek > 0) cellColor = '#EF9F27';     // partially done — amber
+        else if (behindAtWeek > 0) cellColor = '#E24B4A';   // explicitly marked behind — red
+        else if (isPastWeek) cellColor = '#dde4ed';         // past, untouched — neutral grey, not alarming red
+        // future/untouched weeks stay transparent
       }
-      timelineHtml += `<td style="background:${cellColor};color:${cellColor!=='transparent'?'white':'inherit'};font-weight:700">${tasksInRange.length ? cellPct+'%' : ''}</td>`;
+      const textColor = cellColor === 'transparent' ? 'inherit' : (cellColor === '#dde4ed' ? 'var(--text-muted)' : 'white');
+      timelineHtml += `<td style="background:${cellColor};color:${textColor};font-weight:700">${tasksInRange.length ? cellPct+'%' : ''}</td>`;
     });
     timelineHtml += '</tr>';
   });
