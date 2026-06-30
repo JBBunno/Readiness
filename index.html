@@ -193,6 +193,18 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sa
 }
 
 /* ── Gantt-style Checklist ── */
+.checklist-toolbar{display:flex;align-items:center;border-bottom:1px solid var(--border);background:var(--white)}
+.range-edit-toggle{
+  display:flex;align-items:center;gap:6px;flex-shrink:0;margin:6px 10px 6px 0;
+  font-size:12px;font-weight:600;padding:6px 12px;border-radius:20px;
+  border:1px solid var(--border);background:var(--white);color:var(--text-secondary);cursor:pointer;
+}
+.range-edit-toggle svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.range-edit-toggle.active{background:var(--amber);border-color:var(--amber);color:var(--navy)}
+.range-edit-hint{padding:8px 14px;background:var(--amber-bg);color:var(--amber-dark);font-size:12px;line-height:1.4;border-bottom:1px solid var(--border)}
+.gantt-week-cell.range-target{background:#eef4fb}
+.gantt-week-cell.range-pending-start{box-shadow:inset 0 0 0 2px var(--amber);background:var(--amber-bg)}
+
 .gantt-scroll-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 .gantt-table{min-width:600px}
 .gantt-table th{background:var(--navy);color:var(--white);font-size:10px;font-weight:600;padding:6px 4px;border:1px solid rgba(255,255,255,.1);position:sticky;top:0;z-index:3}
@@ -640,7 +652,16 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sa
 
     <!-- CHECKLIST — gantt-style weekly grid, click cell to tick -->
     <div class="view" id="view-checklist">
-      <div class="role-filter-wrap" id="roleFilterWrap"></div>
+      <div class="checklist-toolbar">
+        <div class="role-filter-wrap" id="roleFilterWrap" style="flex:1;border-bottom:none"></div>
+        <button class="range-edit-toggle" id="rangeEditBtn" onclick="toggleRangeEditMode()">
+          <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          <span class="range-edit-label">Adjust weeks</span>
+        </button>
+      </div>
+      <div class="range-edit-hint hidden" id="rangeEditHint">
+        Click a task's start week, then its end week, to set the weeks tracked for that task. Click "Adjust weeks" again to finish.
+      </div>
       <div class="gantt-scroll-wrap">
         <table class="gantt-table" id="ganttTable"></table>
       </div>
@@ -1430,6 +1451,18 @@ function toggleKpi(idx) {
 }
 
 // ── Checklist — gantt-style weekly grid ─────────────────────────
+let rangeEditMode = false;
+let rangeEditTaskId = null; // task currently mid-selection (first click made)
+let rangeEditFirstWeek = null;
+
+function toggleRangeEditMode() {
+  rangeEditMode = !rangeEditMode;
+  rangeEditTaskId = null;
+  document.getElementById('rangeEditBtn').classList.toggle('active', rangeEditMode);
+  document.getElementById('rangeEditHint').classList.toggle('hidden', !rangeEditMode);
+  renderChecklist();
+}
+
 function renderChecklist() {
   const roles = [...new Set(tasks.map(t => t.role))];
 
@@ -1473,6 +1506,14 @@ function renderChecklist() {
         const inRange = w <= startWeek && w >= endWeek;
         let cellClass = 'gantt-week-cell';
         let cellContent = '';
+        if (rangeEditMode) {
+          // In range-edit mode every cell is clickable for range-setting
+          if (inRange) cellClass += ' in-range range-target';
+          if (rangeEditTaskId === t.taskId && w === startWeek) cellClass += ' range-pending-start';
+          const onclick = `onclick="rangeEditClick('${t.taskId.replace(/'/g,"\\'")}',${w})"`;
+          html += `<td class="${cellClass}" ${onclick}></td>`;
+          return;
+        }
         if (inRange) {
           cellClass += ' in-range';
           const cellStatus = statuses[cellKey(t.taskId, w)]?.status || 'none';
@@ -1503,6 +1544,38 @@ function updateReadinessBar() {
 function setRole(r) {
   activeRole = r;
   renderChecklist();
+}
+
+async function rangeEditClick(taskId, week) {
+  if (currentUser.role !== 'Admin') { showToast('Only Admin can adjust tracked weeks'); return; }
+
+  if (rangeEditTaskId === null || rangeEditTaskId !== taskId) {
+    // First click on this task — set as pending start
+    rangeEditTaskId = taskId;
+    rangeEditFirstWeek = week;
+    renderChecklist();
+    showToast('Now click the end week for this task');
+    return;
+  }
+
+  // Second click — finalize range
+  const firstWeek = rangeEditFirstWeek;
+  const w1 = Math.max(firstWeek, week); // higher number = earlier/start
+  const w2 = Math.min(firstWeek, week); // lower number = later/end (weekDue)
+  const newWeekDue = w2;
+  const newDuration = (w1 - w2) + 1;
+
+  const task = tasks.find(t => t.taskId === taskId);
+  if (task) {
+    task.weekDue = newWeekDue;
+    task.duration = newDuration;
+  }
+
+  rangeEditTaskId = null;
+  renderChecklist();
+  showToast(`Tracking W${w1} to W${w2} (${newDuration} wk${newDuration!==1?'s':''})`);
+
+  await api({ action: 'updateTaskRange', taskId, weekDue: newWeekDue, duration: newDuration });
 }
 
 async function toggleGanttCell(taskId, role, week) {
