@@ -1414,11 +1414,12 @@ function renderDashboard() {
     const dueByW = allProjectCells.filter(c => c.week >= w).length;
     return Math.round(dueByW / totalCellCount * 100);
   });
-  // Actual: flat line at the overall Actual % (same figure as the header), drawn from W12 to the current week, then stops
-  const overallActualPct = readinessPctFor(tasks);
+  // Actual: cumulative S-curve from 0% at W12, rising to the overall Actual % at the current week, then flat/stopped
   const actualSeries = curveWeeks.map(w => {
     if (w < weeksOut) return null; // future — not yet happened, don't draw
-    return overallActualPct;
+    // Cells due by this point in time (week >= w) that are also ticked done
+    const doneByW = allProjectCells.filter(c => c.week >= w && statuses[cellKey(c.taskId, c.week)]?.status === 'done').length;
+    return Math.round(doneByW / totalCellCount * 100);
   });
 
   function pathFor(series) {
