@@ -1287,15 +1287,25 @@ function renderDashboard() {
     const pctRole = roleTasks.length ? Math.round(done2/roleTasks.length*100) : 0;
     timelineHtml += `<tr><td class="role-label">${role} <span style="float:right;font-weight:700">${pctRole}%</span></td>`;
     weekCols.forEach(w => {
-      // Determine if any task in this role is due at this week and its status
-      const tasksAtWeek = roleTasks.filter(t => Number(t.weekDue) === w);
+      // Tasks whose tracked range (weekDue to weekDue+duration-1) includes this week
+      const tasksInRange = roleTasks.filter(t => {
+        const weekDue = Number(t.weekDue);
+        const duration = Number(t.duration) || 1;
+        const startWeek = weekDue + duration - 1;
+        return w <= startWeek && w >= weekDue;
+      });
       let cellPct = 0, cellColor = 'transparent';
-      if (tasksAtWeek.length) {
-        const doneAtWeek = tasksAtWeek.filter(t => taskIsDone(t.taskId)).length;
-        cellPct = Math.round(doneAtWeek / tasksAtWeek.length * 100);
-        cellColor = cellPct >= 100 ? '#1D9E75' : cellPct > 0 ? '#EF9F27' : (w <= weeksOut ? '#E24B4A' : 'transparent');
+      if (tasksInRange.length) {
+        // Use the actual per-week cell status for this specific column
+        const doneAtWeek = tasksInRange.filter(t => statuses[cellKey(t.taskId, w)]?.status === 'done').length;
+        const behindAtWeek = tasksInRange.filter(t => statuses[cellKey(t.taskId, w)]?.status === 'behind').length;
+        cellPct = Math.round(doneAtWeek / tasksInRange.length * 100);
+        if (cellPct >= 100) cellColor = '#1D9E75';
+        else if (doneAtWeek > 0) cellColor = '#EF9F27';
+        else if (behindAtWeek > 0) cellColor = '#E24B4A';
+        else if (w <= weeksOut) cellColor = '#E24B4A';
       }
-      timelineHtml += `<td style="background:${cellColor};color:${cellColor!=='transparent'?'white':'inherit'};font-weight:700">${tasksAtWeek.length ? cellPct+'%' : ''}</td>`;
+      timelineHtml += `<td style="background:${cellColor};color:${cellColor!=='transparent'?'white':'inherit'};font-weight:700">${tasksInRange.length ? cellPct+'%' : ''}</td>`;
     });
     timelineHtml += '</tr>';
   });
